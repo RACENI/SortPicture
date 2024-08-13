@@ -6,6 +6,9 @@ using System.Linq;
 using MetadataExtractor.Formats.Iptc;
 using MetadataExtractor;
 using Directory = System.IO.Directory;
+using System.Net.Http;
+using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 namespace picturemetadata
 {
@@ -45,7 +48,7 @@ namespace picturemetadata
                             sortFilePaths = sortPictureDate(dirInfo); // 날짜기반 파일 정리
                             break;
                         case 2:
-                            sortFilePaths = sortPictureGPS(dirInfo); // GPS기반 파일 정리
+                            sortFilePaths = Task.Run(() => sortPictureGPSAsync(dirInfo)).GetAwaiter().GetResult(); // GPS기반 파일 정리
                             break;
                         default:
                             return;
@@ -57,6 +60,8 @@ namespace picturemetadata
                 else
                 {
                     Console.WriteLine("working 폴더가 없습니다.");
+                    Console.ReadLine();
+                    return;
                 }
 
                 Console.WriteLine("---------------------------------------------.");
@@ -75,9 +80,9 @@ namespace picturemetadata
                     Console.ReadLine();
                 }
             }
-            catch
+            catch (Exception e)
             {
-
+                Console.WriteLine("알 수 없는 오류로 처리하지 못했습니다.");
             }
         }
 
@@ -129,20 +134,78 @@ namespace picturemetadata
         /// </summary>
         /// <param name="dirInfo"></param>
         /// <returns>분류된 파일들의 경로 리스트</returns>
-        static private List<string> sortPictureGPS(DirectoryInfo dirInfo)
+        static private async Task<List<string>> sortPictureGPSAsync(DirectoryInfo dirInfo)
         {
-            string path = @"working/" + dirInfo;
+            List<string> doneFilePath = new List<string>(); // 완료한 파일 경로 저장 리스트
 
-            var directories = ImageMetadataReader.ReadMetadata(path);
-
-            var gpsDirectory = directories.OfType<GpsDirectory>().FirstOrDefault();
-
-            if (gpsDirectory != null)
+            foreach (var file in dirInfo.GetFiles())
             {
-                var location = gpsDirectory.GetGeoLocation();
-                if (location != null)
+
+                string path = @"working/" + file.Name;
+
+                try
                 {
-                    Console.WriteLine($"Latitude: {location.Latitude}, Longitude: {location.Longitude}");
+                    var directories = ImageMetadataReader.ReadMetadata(path);
+                    double latitude = 0; // 서울특별시의 위도
+                    double longitude = 0; // 서울특별시의 경도
+
+
+
+                    var gpsDirectory = directories.OfType<GpsDirectory>().FirstOrDefault();
+
+                    if (gpsDirectory != null)
+                    {
+                        var location = gpsDirectory.GetGeoLocation();
+                        if (location != null)
+                        {
+                            Console.WriteLine($"Latitude: {location.Latitude}, Longitude: {location.Longitude}");
+                            latitude = location.Latitude;
+                            longitude = location.Longitude;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("본 파일에 위치 데이터가 없습니다.(" + path + ")");
+                        continue;
+                    }
+
+                    string apiKey = ""; // Google Maps API 키 << 사용자가 입력할 수 있게끔할 예정
+                    string url = $"https://maps.googleapis.com/maps/api/geocode/json?latlng={latitude},{longitude}&key={apiKey}&language=ko";
+
+                    using (HttpClient client = new HttpClient())
+                    {
+                        var response = await client.GetStringAsync(url);
+                        var json = JObject.Parse(response);
+
+                        // 모든 formatted_address 값을 가져오기
+                        var formattedAddresses = new List<string>();
+                        foreach (var result in json["results"])
+                        {
+                            var formattedAddress = result["formatted_address"]?.ToString();
+                            if (formattedAddress != null)
+                            {
+                                formattedAddresses.Add(formattedAddress);
+                                //"대한민국 대전광역시 유성구 문지동 636-1"
+                            }
+                        }
+                    }
+
+                    /*                    Console.WriteLine("완료한 파일 : " + path + " , 찍은 장소 : " + spstring[0]);
+
+                                        string thisDir = Directory.GetCurrentDirectory(); // 현재 디렉터리 주소
+                                        if (Directory.Exists(thisDir + "\\" + spstring[0]) == false)
+                                            Directory.CreateDirectory(thisDir + "\\" + spstring[0]); // 
+
+                                        File.Copy(thisDir + "\\" + path, thisDir + "\\" + spstring[0] + "\\" + file.Name, true); // 
+                                        doneFilePath.Add(path);*/
+                }
+                catch (NullReferenceException e)
+                {
+                    Console.WriteLine("본 파일은 사진파일이 아닙니다.(" + path + ")");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("알 수 없는 오류로 처리하지 못했습니다.(" + path + ")");
                 }
             }
             return null;
