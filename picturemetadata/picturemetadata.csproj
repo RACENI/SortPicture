@@ -54,6 +54,11 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AppSettings.cs" />
+    <Compile Include="SortManagers\DateManager.cs" />
+    <Compile Include="FileManager.cs" />
+    <Compile Include="SortManagers\GpsManager.cs" />
+    <Compile Include="SortManagers\ISortManager.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
